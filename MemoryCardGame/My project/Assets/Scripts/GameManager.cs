@@ -1,243 +1,194 @@
 ﻿using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
 using TMPro;
 
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance;
 
+    [Header("Grid Settings")]
+    [SerializeField] private int gridSize = 4;
+    [SerializeField] private GameObject cardPrefab;
+    [SerializeField] private Transform cardParent;
+
+    [Header("Card Sprites")]
+    [SerializeField] private Sprite cardBack;
+    [SerializeField] private Sprite[] frontSprites;
+
+    [Header("UI")]
+    [SerializeField] private GameObject gamePanel;
     
-    public static int gameSize = 4;
+    [SerializeField] private TMP_Text timerText;
 
-    
-    [SerializeField]
-    private GameObject prefab;
+    private CardItem[] cards;
 
-    
-    [SerializeField]
-    private GameObject cardList;
+    private int firstCardID = -1;
+    private int firstSpriteID = -1;
+    private int remainingCards;
 
-    
-    [SerializeField]
-    private Sprite cardBack;
+    private float gameTimer;
+    private bool gameRunning;
 
-    
-    [SerializeField]
-    private Sprite[] sprites;
-
-   
-    private _Card[] cards;
-
-   
-    [SerializeField]
-    private GameObject panel;
-
-    
-
-    [SerializeField]
-    private GameObject info;
-
-   
-    [SerializeField]
-    private _Card spritePreload;
-
-   
-    [SerializeField]
-    private TMP_Text timeLabel;
-
-    private float time;
-
-    private int spriteSelected;
-    private int cardSelected;
-    private int cardLeft;
-    private bool gameStart;
-
-    void Awake()
+    private void Awake()
     {
         Instance = this;
     }
 
-    void Start()
+    private void Start()
     {
-        gameStart = false;
-        panel.SetActive(false);
-        
+        gameRunning = false;
+        gamePanel.SetActive(false);
     }
 
-    
-    public void StartCardGame()
+    #region GAME FLOW
+
+    public void StartGame()
     {
-        if (gameStart) return;
+        if (gameRunning) return;
 
-        gameStart = true;
+        gameRunning = true;
+        gameTimer = 0f;
 
-        panel.SetActive(true);
-        info.SetActive(false);
+        gamePanel.SetActive(true);
+       
 
-        SetGamePanel();
+        CreateBoard();
+        AssignSprites();
 
-        cardSelected = -1;
-        spriteSelected = -1;
-        cardLeft = cards.Length;
+        remainingCards = cards.Length;
+        firstCardID = -1;
+        firstSpriteID = -1;
 
-        SpriteCardAllocation();
-
-        StartCoroutine(HideFace());
-
-        time = 0;
+        StartCoroutine(PreviewPhase());
     }
 
-    
-
-    private void SetGamePanel()
+    public void StopGame()
     {
-        int totalCards = gameSize * gameSize;
-        cards = new _Card[totalCards];
+        gameRunning = false;
+        gamePanel.SetActive(false);
+    }
 
-        foreach (Transform child in cardList.transform)
+    #endregion
+
+    #region BOARD CREATION
+
+    private void CreateBoard()
+    {
+        int total = gridSize * gridSize;
+        cards = new CardItem[total];
+
+        foreach (Transform child in cardParent)
             Destroy(child.gameObject);
 
-        for (int i = 0; i < totalCards; i++)
+        for (int i = 0; i < total; i++)
         {
-            GameObject c = Instantiate(prefab, cardList.transform);
+            GameObject obj = Instantiate(cardPrefab, cardParent);
+            CardItem card = obj.GetComponent<CardItem>();
 
-            cards[i] = c.GetComponent<_Card>();
-            cards[i].ID = i;
+            card.ID = i;   // ✅ matches your script
+            cards[i] = card;
         }
     }
 
-
-    void ResetFace()
+    private void AssignSprites()
     {
-        for (int i = 0; i < cards.Length; i++)
-            cards[i].ResetRotation();
-    }
+        int pairCount = cards.Length / 2;
+        int[] spriteIndexes = new int[pairCount];
 
-    
-    IEnumerator HideFace()
-    {
-        yield return new WaitForSeconds(0.3f);
+        for (int i = 0; i < pairCount; i++)
+            spriteIndexes[i] = Random.Range(0, frontSprites.Length);
 
-        for (int i = 0; i < cards.Length; i++)
-            cards[i].Flip();
-
-        yield return new WaitForSeconds(0.5f);
-    }
-
-   
-    private void SpriteCardAllocation()
-    {
-        int[] selectedID = new int[cards.Length / 2];
-
-        for (int i = 0; i < cards.Length / 2; i++)
+        foreach (CardItem card in cards)
         {
-            int value = Random.Range(0, sprites.Length);
-
-            for (int j = i; j > 0; j--)
-            {
-                if (selectedID[j - 1] == value)
-                    value = (value + 1) % sprites.Length;
-            }
-
-            selectedID[i] = value;
+            card.Active();
+            card.SpriteID = -1;
+            card.ResetRotation();
         }
 
-        for (int i = 0; i < cards.Length; i++)
-        {
-            cards[i].Active();
-            cards[i].SpriteID = -1;
-            cards[i].ResetRotation();
-        }
-
-        for (int i = 0; i < cards.Length / 2; i++)
+        for (int i = 0; i < pairCount; i++)
         {
             for (int j = 0; j < 2; j++)
             {
-                int value = Random.Range(0, cards.Length);
+                int randomIndex = Random.Range(0, cards.Length);
 
-                while (cards[value].SpriteID != -1)
-                    value = (value + 1) % cards.Length;
+                while (cards[randomIndex].SpriteID != -1)
+                    randomIndex = (randomIndex + 1) % cards.Length;
 
-                cards[value].SpriteID = selectedID[i];
+                cards[randomIndex].SpriteID = spriteIndexes[i];
             }
         }
     }
 
-    public Sprite GetSprite(int spriteId)
+    private IEnumerator PreviewPhase()
     {
-        return sprites[spriteId];
+        yield return new WaitForSeconds(0.4f);
+
+        foreach (CardItem card in cards)
+            card.Flip();
+
+        yield return new WaitForSeconds(0.6f);
     }
 
-    public Sprite CardBack()
+    #endregion
+
+    #region MATCH LOGIC
+
+    public void OnCardSelected(int spriteID, int cardID)
+    {
+        if (firstSpriteID == -1)
+        {
+            firstSpriteID = spriteID;
+            firstCardID = cardID;
+            return;
+        }
+
+        if (firstSpriteID == spriteID)
+        {
+            cards[firstCardID].Inactive();
+            cards[cardID].Inactive();
+            remainingCards -= 2;
+
+            if (remainingCards <= 0)
+                StopGame();
+        }
+        else
+        {
+            cards[firstCardID].Flip();
+            cards[cardID].Flip();
+        }
+
+        firstSpriteID = -1;
+        firstCardID = -1;
+    }
+
+    #endregion
+
+    #region HELPERS
+
+    public Sprite GetSprite(int id)
+    {
+        return frontSprites[id];
+    }
+
+    public Sprite GetBackSprite()
     {
         return cardBack;
     }
 
-    public bool canClick()
+    public bool CanClick()
     {
-        return gameStart;
+        return gameRunning;
     }
 
-    public void cardClicked(int spriteId, int cardId)
-    {
-        if (spriteSelected == -1)
-        {
-            spriteSelected = spriteId;
-            cardSelected = cardId;
-        }
-        else
-        {
-            if (spriteSelected == spriteId)
-            {
-                cards[cardSelected].Inactive();
-                cards[cardId].Inactive();
-                cardLeft -= 2;
-                CheckGameWin();
-            }
-            else
-            {
-                cards[cardSelected].Flip();
-                cards[cardId].Flip();
-            }
+   
 
-            cardSelected = -1;
-            spriteSelected = -1;
-        }
-    }
-
-    private void CheckGameWin()
-    {
-        if (cardLeft == 0)
-        {
-            EndGame();
-            
-        }
-    }
-
-    private void EndGame()
-    {
-        gameStart = false;
-        panel.SetActive(false);
-    }
-
-    public void CloseGame()
-    {
-        EndGame();
-    }
-
-    public void DisplayInfo(bool i)
-    {
-        info.SetActive(i);
-    }
+    #endregion
 
     private void Update()
     {
-        if (gameStart)
-        {
-            time += Time.deltaTime;
-            timeLabel.text = "Time: " + time.ToString("F1") + "s";
-        }
+        if (!gameRunning) return;
+
+        gameTimer += Time.deltaTime;
+        timerText.text = $"Time: {gameTimer:F1}s";
     }
 }
